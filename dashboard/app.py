@@ -43,24 +43,24 @@ st.caption("Auspify Technologies — Data Science Internship | Task 6")
 st.sidebar.header("Filters")
 
 years = df['year_added'].dropna()
-yr = st.sidebar.slider("Netflix par kab add hua",
+yr = st.sidebar.slider("Year Added to Netflix",
                        int(years.min()), int(years.max()),
                        (int(years.min()), int(years.max())))
 
 types = st.sidebar.multiselect("Type", df['type'].unique(),
                                default=list(df['type'].unique()))
 
-countries = ['Sab'] + df['primary_country'].value_counts().head(15).index.tolist()
+countries = ['All'] + df['primary_country'].value_counts().head(15).index.tolist()
 country = st.sidebar.selectbox("Country", countries)
 
 f = df[(df['year_added'].between(yr[0], yr[1])) & (df['type'].isin(types))]
-if country != 'Sab':
+if country != 'All':
     f = f[f['primary_country'] == country]
 
 
 # ---------- KPIs ----------
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total titles", len(f))
+c1.metric("Total Titles", len(f))
 c2.metric("Movies", (f['type'] == 'Movie').sum())
 c3.metric("TV Shows", (f['type'] == 'TV Show').sum())
 c4.metric("Countries", f['primary_country'].nunique())
@@ -70,7 +70,7 @@ st.divider()
 
 # ---------- Charts ----------
 if len(f) == 0:
-    st.warning("Is filter par koi data nahi mila. Filters badal kar dekho.")
+    st.warning("No data matches these filters. Try adjusting them.")
     st.stop()
 
 left, right = st.columns(2)
@@ -78,7 +78,8 @@ left, right = st.columns(2)
 with left:
     yearly = f.groupby(['year_added', 'type']).size().reset_index(name='count')
     fig = px.line(yearly, x='year_added', y='count', color='type',
-                  title="Har saal kitna content add hua", markers=True,
+                  title="Content Added Per Year", markers=True,
+                  labels={'year_added': 'Year', 'count': 'Titles', 'type': ''},
                   color_discrete_map={'Movie': '#E50914', 'TV Show': '#221F1F'})
     st.plotly_chart(fig, use_container_width=True)
 
@@ -88,13 +89,14 @@ with right:
     top_c.columns = ['country', 'count']
     if len(top_c):
         fig = px.bar(top_c, x='count', y='country', orientation='h',
-                     title="Top 10 countries", color='count',
+                     title="Top 10 Countries", color='count',
+                     labels={'count': 'Titles', 'country': ''},
                      color_continuous_scale='Reds')
         fig.update_layout(yaxis={'categoryorder': 'total ascending'},
                           coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Country ka data nahi")
+        st.info("No country data")
 
 left2, right2 = st.columns(2)
 
@@ -104,43 +106,45 @@ with left2:
     genres.columns = ['genre', 'count']
     if len(genres):
         fig = px.bar(genres, x='count', y='genre', orientation='h',
-                     title="Top 10 genres", color='count',
+                     title="Top 10 Genres", color='count',
+                     labels={'count': 'Titles', 'genre': ''},
                      color_continuous_scale='Reds')
         fig.update_layout(yaxis={'categoryorder': 'total ascending'},
                           coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Genre ka data nahi")
+        st.info("No genre data")
 
 with right2:
     ratings = (f[f['rating'] != 'Unknown']['rating']
                .value_counts().head(10).reset_index())
     ratings.columns = ['rating', 'count']
     if len(ratings):
-        fig = px.bar(ratings, x='rating', y='count', title="Ratings",
-                     color='count', color_continuous_scale='Reds')
+        fig = px.bar(ratings, x='rating', y='count', title="Content Ratings",
+                     color='count', labels={'count': 'Titles', 'rating': 'Rating'},
+                     color_continuous_scale='Reds')
         fig.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Rating ka data nahi")
+        st.info("No rating data")
 
 st.divider()
 
 
 # ---------- Prediction ----------
-st.header("Model: Movie ya TV Show?")
-st.write("Rating aur saal daal kar dekho model kya kehta hai.")
+st.header("Predict: Movie or TV Show?")
+st.write("Enter a rating and years to see what the model predicts.")
 
-# Dataset mein 3 rows kharab hain jahan duration ("66 min") rating wale
-# khane mein chala gaya hai. Unhe dropdown se nikal rahe hain.
+# The dataset has 3 malformed rows where a duration value ("66 min") ended up
+# in the rating column. These are excluded from the dropdown.
 valid_ratings = sorted([r for r in df['rating'].dropna().unique()
                         if isinstance(r, str)
                         and not r.endswith('min')
                         and r != 'Unknown'])
 
 p1, p2, p3 = st.columns(3)
-in_year = p1.number_input("Release year", 1940, 2025, 2020)
-in_added = p2.number_input("Netflix par add hua", 2008, 2025, 2021)
+in_year = p1.number_input("Release Year", 1940, 2025, 2020)
+in_added = p2.number_input("Year Added", 2008, 2025, 2021)
 in_rating = p3.selectbox("Rating", valid_ratings)
 
 if st.button("Predict"):
@@ -153,13 +157,16 @@ if st.button("Predict"):
     prob = model.predict_proba(row)[0]
 
     if pred == 1:
-        st.success(f"**TV Show** — bharosa {prob[1]:.0%}")
+        st.success(f"**TV Show** — {prob[1]:.0%} confidence")
     else:
-        st.info(f"**Movie** — bharosa {prob[0]:.0%}")
+        st.info(f"**Movie** — {prob[0]:.0%} confidence")
 
-    st.caption("Note: ye model sirf rating aur saal se andaza lagata hai. "
-               "Accuracy ~67%, baseline 70%. Leakage wale features jaan bujh "
-               "kar nahi diye. Tafseel Task 5 ki notebook mein hai.")
+    st.caption(
+        "This model uses only rating and year. Features that directly encode "
+        "the answer — duration unit and Netflix's genre labels — were "
+        "deliberately excluded. Including them yields 99% accuracy but no real "
+        "learning. See the Task 5 notebook for the full leakage analysis."
+    )
 
 st.divider()
-st.caption("Data: Netflix Movies and TV Shows (Kaggle) | 8807 titles")
+st.caption("Data: Netflix Movies and TV Shows (Kaggle) | 8,807 titles")
